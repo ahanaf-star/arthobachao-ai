@@ -1,0 +1,982 @@
+import React, { useState } from 'react';
+import { SavingsGoal, ScenarioPlan } from '../types/financial';
+import {
+  formatBDT,
+  calculateScenarioPlans,
+  calculateRemainingGoalAmount,
+  calculateGoalProgressPercentage,
+} from '../services/financialCalculations';
+import { NavScreen } from './Sidebar';
+
+interface SavingsGoalsProps {
+  goals: SavingsGoal[];
+  onUpdateGoal: (updatedGoal: SavingsGoal) => void;
+  onDeleteGoal?: (goalId: string) => void;
+  onDepositToGoal?: (goalId: string, amount: number) => void;
+  onOpenCreateGoal: () => void;
+  onNavigate: (screen: NavScreen) => void;
+  isBangla: boolean;
+}
+
+export const SavingsGoals: React.FC<SavingsGoalsProps> = ({
+  goals,
+  onUpdateGoal,
+  onDeleteGoal,
+  onDepositToGoal,
+  onOpenCreateGoal,
+  onNavigate,
+  isBangla,
+}) => {
+  const [selectedPlanId, setSelectedPlanId] = useState<'planA' | 'planB' | 'planC'>('planB');
+  const [depositSuccessMsg, setDepositSuccessMsg] = useState<string | null>(null);
+  const [adjustModalGoal, setAdjustModalGoal] = useState<SavingsGoal | null>(null);
+  const [newPaceInput, setNewPaceInput] = useState<string>('5000');
+  const [editingGoal, setEditingGoal] = useState<SavingsGoal | null>(null);
+  const [editForm, setEditForm] = useState<{
+    title: string;
+    targetAmount: number;
+    currentAmount: number;
+    monthlyPace: number;
+    deadline: string;
+    accountVault: string;
+  }>({
+    title: '',
+    targetAmount: 0,
+    currentAmount: 0,
+    monthlyPace: 0,
+    deadline: '',
+    accountVault: '',
+  });
+
+  // Emergency Fund is the primary goal
+  const heroGoal = goals.find((g) => g.id === 'goal-emergency-fund') || goals[0];
+  const secondaryGoals = goals.filter((g) => g.id !== heroGoal?.id);
+
+  // Scenario plans for hero goal
+  const scenarioPlans = heroGoal ? calculateScenarioPlans(heroGoal) : [];
+
+  // Handle Quick Deposit of ৳1,000
+  const handleQuickDeposit = () => {
+    if (!heroGoal) return;
+    if (onDepositToGoal) {
+      onDepositToGoal(heroGoal.id, 1000);
+    } else {
+      const newAmount = heroGoal.currentAmount + 1000;
+      const updated: SavingsGoal = {
+        ...heroGoal,
+        currentAmount: Math.min(heroGoal.targetAmount, newAmount),
+      };
+      onUpdateGoal(updated);
+    }
+    setDepositSuccessMsg('৳1,000 deposited into bKash Liquid Vault! Goal progress updated.');
+    setTimeout(() => {
+      setDepositSuccessMsg(null);
+    }, 4500);
+  };
+
+  // Handle Plan Selection
+  const handleSelectPlan = (plan: ScenarioPlan) => {
+    setSelectedPlanId(plan.planId);
+    if (heroGoal) {
+      const updated: SavingsGoal = {
+        ...heroGoal,
+        monthlyPace: plan.monthlyAmount,
+      };
+      onUpdateGoal(updated);
+      setDepositSuccessMsg(`Applied ${plan.name} (৳${plan.monthlyAmount.toLocaleString()}/month)! Target pace recalibrated.`);
+      setTimeout(() => setDepositSuccessMsg(null), 4500);
+    }
+  };
+
+  // Adjust pace save
+  const handleSavePace = () => {
+    if (!adjustModalGoal) return;
+    const pace = parseInt(newPaceInput, 10);
+    if (pace > 0) {
+      onUpdateGoal({
+        ...adjustModalGoal,
+        monthlyPace: pace,
+      });
+    }
+    setAdjustModalGoal(null);
+  };
+
+  // Edit goal handlers
+  const openEditGoalModal = (g: SavingsGoal) => {
+    setEditingGoal(g);
+    setEditForm({
+      title: g.title,
+      targetAmount: g.targetAmount,
+      currentAmount: g.currentAmount,
+      monthlyPace: g.monthlyPace,
+      deadline: g.deadline || '2024-12-31',
+      accountVault: g.accountVault || 'bKash Liquid Vault',
+    });
+  };
+
+  const handleSaveEditGoal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingGoal) return;
+    const updated: SavingsGoal = {
+      ...editingGoal,
+      title: editForm.title.trim() || editingGoal.title,
+      targetAmount: Math.max(1000, Number(editForm.targetAmount)),
+      currentAmount: Math.max(0, Number(editForm.currentAmount)),
+      monthlyPace: Math.max(500, Number(editForm.monthlyPace)),
+      deadline: editForm.deadline,
+      accountVault: editForm.accountVault,
+    };
+    onUpdateGoal(updated);
+    setEditingGoal(null);
+    setDepositSuccessMsg(`Savings goal "${updated.title}" updated successfully.`);
+    setTimeout(() => setDepositSuccessMsg(null), 4000);
+  };
+
+  const handleDeleteClick = (goalId: string, title: string) => {
+    if (window.confirm(`Are you sure you want to delete the goal "${title}"?`)) {
+      if (onDeleteGoal) {
+        onDeleteGoal(goalId);
+        setDepositSuccessMsg(`Goal "${title}" has been deleted.`);
+        setTimeout(() => setDepositSuccessMsg(null), 4000);
+      }
+    }
+  };
+
+  if (!heroGoal) {
+    return (
+      <div className="flex flex-col items-center justify-center p-12 rounded-3xl bg-surface-container-lowest border border-outline-variant/30 text-center max-w-lg mx-auto my-12 shadow-sm">
+        <div className="w-16 h-16 rounded-2xl bg-secondary-container text-on-secondary-container flex items-center justify-center text-3xl mb-4 shadow-sm">
+          🛡️
+        </div>
+        <h3 className="font-headline-md text-2xl font-bold text-on-surface">No Savings Goals Active</h3>
+        <p className="font-body-md text-on-surface-variant mt-2 max-w-sm">
+          You currently have no active goals in your savings vault. Create your first goal or restore starter demo targets.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+          <button
+            onClick={onOpenCreateGoal}
+            className="px-6 py-2.5 bg-primary text-on-primary font-title-md rounded-xl shadow-sm hover:opacity-95 active:scale-95"
+          >
+            + Create New Goal
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const remainingGap = calculateRemainingGoalAmount(heroGoal);
+  const achievedPct = calculateGoalProgressPercentage(heroGoal);
+
+  return (
+    <div className="flex flex-col w-full gap-space-lg pb-space-xl">
+      {/* Toast Alert */}
+      {depositSuccessMsg && (
+        <div className="p-3.5 rounded-xl bg-secondary text-on-secondary flex items-center justify-between shadow-lg animate-in fade-in duration-300">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-[20px]">check_circle</span>
+            <span className="font-title-md text-sm sm:text-title-md">{depositSuccessMsg}</span>
+          </div>
+          <button
+            onClick={() => setDepositSuccessMsg(null)}
+            className="p-1 rounded hover:bg-white/20"
+          >
+            <span className="material-symbols-outlined text-[16px]">close</span>
+          </button>
+        </div>
+      )}
+
+      {/* Header Section */}
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-space-md">
+        <div className="flex flex-col max-w-2xl">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-bold">
+              <span className="material-symbols-outlined text-[14px]">auto_graph</span>
+              SMART CAPITAL ALLOCATION
+            </span>
+            <span className="font-label-sm text-label-sm text-outline tracking-wider uppercase font-semibold">
+              Vault v3.8
+            </span>
+          </div>
+          <h1 className="font-headline-xl text-headline-xl text-on-surface tracking-tight font-bold">
+            {isBangla ? 'লক্ষ্য অর্জন এবং সঞ্চয় পরিকল্পনা' : 'Turn Goals into a Plan'}
+          </h1>
+          <p className="font-body-lg text-body-lg text-on-surface-variant mt-1">
+            AI-assisted savings projection, automated pace tracking, and timeline simulation
+          </p>
+        </div>
+
+        <div className="flex items-center flex-wrap gap-space-sm">
+          <button className="flex items-center gap-2 px-space-md py-2.5 rounded-xl bg-surface-container-high text-on-surface hover:bg-surface-container-highest transition-all shadow-sm border border-outline-variant/30">
+            <span className="material-symbols-outlined text-[18px] text-secondary">autorenew</span>
+            <div className="flex flex-col text-left">
+              <span className="font-label-sm text-label-sm text-on-surface-variant leading-none">
+                Auto-save Rules
+              </span>
+              <span className="font-title-md text-title-md leading-none mt-0.5 font-bold">
+                Active: ৳100/day
+              </span>
+            </div>
+          </button>
+          <button
+            onClick={onOpenCreateGoal}
+            className="flex items-center gap-2 px-space-lg py-3 rounded-xl bg-primary-container text-on-primary hover:bg-inverse-surface transition-all shadow-md active:scale-95"
+          >
+            <span className="material-symbols-outlined text-[20px] text-secondary-container">
+              add_circle
+            </span>
+            <span className="font-title-md text-title-md font-semibold">
+              + Create New Savings Goal
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Main Workspace Layout */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-space-lg items-start">
+        {/* Primary Core: Goals & Projections (8 Columns) */}
+        <div className="xl:col-span-8 flex flex-col gap-space-lg">
+          {/* Hero Goal Card: Emergency Fund */}
+          <div className="relative bg-surface-container-lowest rounded-xl p-space-lg shadow-sm overflow-hidden group border border-outline-variant/20">
+            <div className="absolute -right-20 -top-20 w-64 h-64 rounded-full bg-secondary-container/20 blur-3xl pointer-events-none"></div>
+
+            {/* Header and Badge */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm pb-space-md border-b border-outline-variant/15">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-surface-container-high flex items-center justify-center text-on-surface text-2xl shadow-sm">
+                  {heroGoal.icon}
+                </div>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-headline-md text-headline-md text-on-surface font-bold">
+                      {heroGoal.title}
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span>
+                      {heroGoal.status}
+                    </span>
+                  </div>
+                  <span className="font-body-sm text-body-sm text-on-surface-variant">
+                    {heroGoal.category} • {heroGoal.accountVault}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider">
+                  Velocity
+                </span>
+                <span className="px-2 py-1 rounded-lg bg-surface-container font-title-md text-title-md text-secondary font-bold">
+                  {formatBDT(heroGoal.monthlyPace)}/mo
+                </span>
+              </div>
+            </div>
+
+            {/* Numbers Breakdown */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-space-sm py-space-md my-space-xs rounded-xl bg-surface-container-low px-space-md border border-outline-variant/15">
+              <div className="flex flex-col">
+                <span className="font-label-sm text-label-sm text-on-surface-variant">
+                  Target Capital
+                </span>
+                <span className="font-title-lg text-title-lg text-on-surface font-bold mt-0.5">
+                  {formatBDT(heroGoal.targetAmount)}
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <span className="font-label-sm text-label-sm text-on-surface-variant">
+                  Current Saved
+                </span>
+                <span className="font-headline-md text-headline-md text-secondary font-bold mt-0.5">
+                  {formatBDT(heroGoal.currentAmount)}
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <span className="font-label-sm text-label-sm text-on-surface-variant">
+                  Remaining Gap
+                </span>
+                <span className="font-title-lg text-title-lg text-error font-bold mt-0.5">
+                  {formatBDT(remainingGap)}
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <span className="font-label-sm text-label-sm text-on-surface-variant">
+                  Completion ETA
+                </span>
+                <span className="font-title-lg text-title-lg text-on-surface font-bold mt-0.5">
+                  Dec 14, 2024
+                </span>
+                <span className="font-label-sm text-label-sm text-on-surface-variant">
+                  1.8 months left
+                </span>
+              </div>
+            </div>
+
+            {/* Progress Visualization Bar with Milestones */}
+            <div className="py-space-md flex flex-col gap-2">
+              <div className="flex justify-between items-center text-body-sm font-body-sm">
+                <span className="text-on-surface font-semibold flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-[16px] text-secondary">
+                    verified
+                  </span>
+                  {achievedPct}% achieved
+                </span>
+                <span className="text-on-surface-variant">
+                  Target Pace: ৳5,000/mo (92% cadence)
+                </span>
+              </div>
+
+              {/* Custom Progress Bar */}
+              <div className="relative w-full h-4 bg-surface-container-high rounded-full overflow-visible p-0.5 mt-1">
+                <div
+                  className="h-full bg-gradient-to-r from-secondary-container via-secondary to-on-secondary-container rounded-full relative transition-all duration-1000 ease-out shadow-sm"
+                  style={{ width: `${Math.min(100, achievedPct)}%` }}
+                >
+                  <div className="absolute -right-2 -top-1 w-6 h-6 bg-surface-container-lowest rounded-full shadow-md flex items-center justify-center border border-secondary">
+                    <div className="w-2.5 h-2.5 rounded-full bg-secondary"></div>
+                  </div>
+                </div>
+
+                {/* Milestone 1 Flag: 10,000 (33.3%) */}
+                <div className="absolute top-6 left-[33.3%] -translate-x-1/2 flex flex-col items-center">
+                  <div className="w-0.5 h-2 bg-secondary"></div>
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary-container text-on-secondary-container font-label-sm text-[10px] font-bold">
+                    <span className="material-symbols-outlined text-[10px]">check</span>
+                    ৳10k Hit
+                  </div>
+                </div>
+
+                {/* Milestone 2 Flag: 20,000 (66.6%) */}
+                <div className="absolute top-6 left-[66.6%] -translate-x-1/2 flex flex-col items-center">
+                  <div className="w-0.5 h-2 bg-outline"></div>
+                  <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface-container-highest text-on-surface font-label-sm text-[10px] font-semibold">
+                    <span className="material-symbols-outlined text-[10px]">flag</span>
+                    ৳20k Next
+                  </div>
+                </div>
+              </div>
+
+              {/* Milestone clearance spacer */}
+              <div className="h-6"></div>
+            </div>
+
+            {/* Bottom Action Strip */}
+            <div className="pt-space-md flex flex-col sm:flex-row items-center justify-between gap-space-md bg-surface-container/50 -mx-space-lg -mb-space-lg px-space-lg py-space-md mt-space-sm border-t border-outline-variant/15">
+              <div className="flex items-center gap-2 text-on-surface-variant font-body-sm text-body-sm">
+                <span className="material-symbols-outlined text-[18px] text-tertiary-container">
+                  info
+                </span>
+                <span>Next scheduled sweep: ৳350 tomorrow at 10:00 AM via Dhaka Bank</span>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  onClick={() => openEditGoalModal(heroGoal)}
+                  className="px-space-md py-2 rounded-lg bg-surface-container-lowest text-on-surface font-title-md text-title-md hover:bg-surface-container-high transition-colors shadow-sm w-full sm:w-auto border border-outline-variant/30 flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-[16px]">edit</span>
+                  <span>Edit Goal</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setAdjustModalGoal(heroGoal);
+                    setNewPaceInput(heroGoal.monthlyPace.toString());
+                  }}
+                  className="px-space-md py-2 rounded-lg bg-surface-container-lowest text-on-surface font-title-md text-title-md hover:bg-surface-container-high transition-colors shadow-sm w-full sm:w-auto border border-outline-variant/30"
+                >
+                  Adjust Pace
+                </button>
+                <button
+                  onClick={handleQuickDeposit}
+                  className="px-space-md py-2 rounded-lg bg-secondary text-on-secondary font-title-md text-title-md hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm w-full sm:w-auto active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-[18px]">bolt</span>
+                  + Deposit ৳1,000 Now
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary Goals Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-space-lg">
+            {secondaryGoals.map((g) => {
+              const gGap = calculateRemainingGoalAmount(g);
+              const gPct = calculateGoalProgressPercentage(g);
+              return (
+                <div
+                  key={g.id}
+                  className="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col justify-between border border-outline-variant/20"
+                >
+                  <div className="flex flex-col">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="w-10 h-10 rounded-xl bg-surface-container-high flex items-center justify-center text-xl shadow-sm">
+                        {g.icon}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-label-sm text-label-sm px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-medium">
+                          {g.category}
+                        </span>
+                        <button
+                          onClick={() => openEditGoalModal(g)}
+                          className="p-1 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors"
+                          title="Edit Goal"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">edit</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteClick(g.id, g.title)}
+                          className="p-1 rounded-lg text-outline hover:text-error hover:bg-error-container/20 transition-colors"
+                          title="Delete Goal"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">delete</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <h3 className="font-headline-md text-headline-md text-on-surface mt-space-sm font-bold">
+                      {g.title}
+                    </h3>
+                    <p className="font-body-sm text-body-sm text-on-surface-variant mt-0.5 flex flex-wrap items-center gap-2">
+                      <span>Target: {formatBDT(g.targetAmount)}</span>
+                      <span>•</span>
+                      <span>Target Date: {g.deadline || '2025-06-30'}</span>
+                    </p>
+
+                    <div className="mt-space-md flex items-baseline justify-between">
+                      <div>
+                        <span className="font-numeric-hero text-numeric-hero text-on-surface font-bold">
+                          {formatBDT(g.currentAmount)}
+                        </span>
+                        <span className="font-body-sm text-body-sm text-on-surface-variant ml-1">
+                          / {formatBDT(g.targetAmount)}
+                        </span>
+                      </div>
+                      <span className="font-title-md text-title-md text-on-surface font-semibold">
+                        {gPct}%
+                      </span>
+                    </div>
+
+                    {/* Progress bar */}
+                    <div className="w-full h-2.5 bg-surface-container-high rounded-full overflow-hidden mt-2">
+                      <div
+                        className="h-full bg-primary-container rounded-full transition-all duration-700"
+                        style={{ width: `${Math.min(100, gPct)}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="flex justify-between items-center mt-3 text-body-sm font-body-sm text-on-surface-variant">
+                      <span>Remaining: {formatBDT(gGap)}</span>
+                      <span className="font-semibold text-on-surface">
+                        Required: {formatBDT(g.monthlyPace)}/mo
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-space-md mt-space-md flex items-center justify-between border-t border-outline-variant/15">
+                    <span className="font-label-sm text-label-sm text-outline">
+                      {g.accountVault}
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (onDepositToGoal) {
+                          onDepositToGoal(g.id, 1000);
+                        } else {
+                          const updated: SavingsGoal = {
+                            ...g,
+                            currentAmount: Math.min(g.targetAmount, g.currentAmount + 1000),
+                          };
+                          onUpdateGoal(updated);
+                        }
+                        setDepositSuccessMsg(`Boosted ${g.title} by +৳1,000!`);
+                        setTimeout(() => setDepositSuccessMsg(null), 4000);
+                      }}
+                      className="font-title-md text-title-md text-secondary hover:underline flex items-center gap-0.5 font-bold"
+                    >
+                      Boost Goal (+৳1,000)
+                      <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Section: AI Savings Plan Comparison Simulator */}
+          <div className="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md relative overflow-hidden border border-outline-variant/20">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-tertiary-container text-[24px]">
+                  psychology
+                </span>
+                <div>
+                  <h3 className="font-headline-md text-headline-md text-on-surface font-bold">
+                    ArthoBachao AI Scenario Planning
+                  </h3>
+                  <p className="font-body-sm text-body-sm text-on-surface-variant">
+                    Accelerate Emergency Fund completion timeline using contextual cash-flow heuristics
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-surface-container font-label-sm text-label-sm text-on-surface font-semibold self-start sm:self-auto">
+                Simulated Target: {formatBDT(remainingGap)}
+              </span>
+            </div>
+
+            {/* 3 Scenario Comparison Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-space-md pt-space-xs">
+              {scenarioPlans.map((plan) => {
+                const isSelected = selectedPlanId === plan.planId;
+                const isOptimal = plan.isRecommended;
+
+                if (isOptimal) {
+                  return (
+                    <div
+                      key={plan.planId}
+                      className="bg-primary-container text-on-primary rounded-xl p-space-md flex flex-col justify-between shadow-md relative transform md:-translate-y-1 border border-secondary/40"
+                    >
+                      <div className="absolute -top-3 right-4 px-2.5 py-0.5 rounded-full bg-secondary-container text-on-secondary-container font-label-sm text-label-sm font-bold flex items-center gap-1 shadow-sm">
+                        <span className="material-symbols-outlined text-[14px]">
+                          auto_awesome
+                        </span>
+                        AI RECOMMENDED
+                      </div>
+
+                      <div className="flex flex-col">
+                        <div className="flex items-center justify-between pt-1">
+                          <span className="font-label-sm text-label-sm text-primary-fixed-dim uppercase tracking-wider">
+                            Plan B
+                          </span>
+                          <span className="font-label-sm text-label-sm px-2 py-0.5 rounded bg-surface-container-highest/20 text-secondary-container font-medium">
+                            {plan.badge}
+                          </span>
+                        </div>
+
+                        <h4 className="font-title-lg text-title-lg text-on-primary mt-2 font-bold">
+                          {plan.name}
+                        </h4>
+
+                        <div className="my-space-sm">
+                          <span className="font-headline-lg text-headline-lg text-secondary-container font-bold">
+                            {formatBDT(plan.monthlyAmount)}
+                          </span>
+                          <span className="font-body-sm text-body-sm text-on-primary-container">
+                            / month
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5 pt-space-xs">
+                          <div className="flex items-center gap-1.5 text-body-sm font-body-sm text-on-primary">
+                            <span className="material-symbols-outlined text-[16px] text-secondary-container">
+                              event_available
+                            </span>
+                            <span>
+                              {plan.durationMonths} months ({plan.targetCompletionDate})
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-1.5 text-body-sm font-body-sm text-primary-fixed-dim">
+                            <span className="material-symbols-outlined text-[16px] text-secondary-container mt-0.5">
+                              tune
+                            </span>
+                            <span>{plan.adjustmentNote}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2 mt-space-md">
+                        <button
+                          onClick={() => handleSelectPlan(plan)}
+                          className="w-full py-2.5 rounded-lg bg-secondary-container text-on-secondary-container font-title-md text-title-md font-bold hover:opacity-95 transition-all shadow-sm active:scale-95"
+                        >
+                          {isSelected ? '✓ Plan Active' : 'Select Balanced Plan'}
+                        </button>
+                        <button
+                          onClick={() => onNavigate('ai-coach')}
+                          className="text-center font-label-md text-label-md text-primary-fixed-dim hover:text-on-primary underline transition-colors"
+                        >
+                          Customize Rules
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={plan.planId}
+                    className={`bg-surface-container-low rounded-xl p-space-md flex flex-col justify-between hover:bg-surface-container transition-all cursor-pointer border ${
+                      isSelected ? 'border-secondary ring-2 ring-secondary/20' : 'border-outline-variant/20'
+                    }`}
+                  >
+                    <div className="flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider">
+                          {plan.planId === 'planA' ? 'Plan A' : 'Plan C'}
+                        </span>
+                        <span className="font-label-sm text-label-sm px-2 py-0.5 rounded bg-surface-container-high text-on-surface-variant font-medium">
+                          {plan.badge}
+                        </span>
+                      </div>
+
+                      <h4 className="font-title-lg text-title-lg text-on-surface mt-2 font-bold">
+                        {plan.name}
+                      </h4>
+
+                      <div className="my-space-sm">
+                        <span className="font-headline-lg text-headline-lg text-on-surface font-bold">
+                          {formatBDT(plan.monthlyAmount)}
+                        </span>
+                        <span className="font-body-sm text-body-sm text-on-surface-variant">
+                          / month
+                        </span>
+                      </div>
+
+                      <div className="space-y-1.5 pt-space-xs">
+                        <div className="flex items-center gap-1.5 text-body-sm font-body-sm text-on-surface">
+                          <span className="material-symbols-outlined text-[16px] text-outline">
+                            schedule
+                          </span>
+                          <span>
+                            {plan.durationMonths} months ({plan.targetCompletionDate})
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-1.5 text-body-sm font-body-sm text-on-surface-variant">
+                          <span className="material-symbols-outlined text-[16px] text-secondary mt-0.5">
+                            {plan.planId === 'planA' ? 'sentiment_satisfied' : 'warning'}
+                          </span>
+                          <span>{plan.adjustmentNote}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleSelectPlan(plan)}
+                      className="mt-space-md w-full py-2 rounded-lg bg-surface-container-highest text-on-surface font-title-md text-title-md hover:bg-outline-variant/30 transition-colors active:scale-95"
+                    >
+                      {isSelected ? '✓ Plan Active' : 'Apply Plan'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Habits & Milestones Sidebar (4 Columns) */}
+        <div className="xl:col-span-4 flex flex-col gap-space-lg">
+          {/* Habits & Micro-Milestones Card */}
+          <div className="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col gap-space-md border border-outline-variant/20">
+            <div className="flex items-center justify-between pb-2 border-b border-outline-variant/15">
+              <h3 className="font-headline-md text-headline-md text-on-surface font-bold">
+                Habits &amp; Milestones
+              </h3>
+              <span className="material-symbols-outlined text-outline text-[20px]">
+                military_tech
+              </span>
+            </div>
+
+            {/* Streak Badge Widget */}
+            <div className="p-space-md rounded-xl bg-gradient-to-br from-surface-container-low to-surface-container flex items-center justify-between border border-outline-variant/20">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-surface-container-lowest flex items-center justify-center text-2xl shadow-sm">
+                  🔥
+                </div>
+                <div className="flex flex-col">
+                  <span className="font-headline-md text-headline-md text-on-surface font-bold leading-tight">
+                    34-Day Streak
+                  </span>
+                  <span className="font-body-sm text-body-sm text-secondary font-medium">
+                    Never missed an automated sweep
+                  </span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="font-label-sm text-label-sm text-outline">Tier</span>
+                <p className="font-title-md text-title-md text-on-surface font-bold">Gold</p>
+              </div>
+            </div>
+
+            {/* Micro Statistics List */}
+            <div className="flex flex-col gap-space-sm pt-space-xs">
+              <div className="p-space-sm rounded-lg bg-surface-container-low flex items-center justify-between border border-outline-variant/15">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-secondary-container/50 flex items-center justify-center text-on-secondary-container">
+                    <span className="material-symbols-outlined text-[18px]">
+                      currency_exchange
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-title-md text-title-md text-on-surface font-semibold">
+                      Round-Up Savings
+                    </span>
+                    <span className="font-body-sm text-body-sm text-on-surface-variant">
+                      Collected this month
+                    </span>
+                  </div>
+                </div>
+                <span className="font-title-lg text-title-lg text-secondary font-bold">৳1,420</span>
+              </div>
+
+              <div className="p-space-sm rounded-lg bg-surface-container-low flex items-center justify-between border border-outline-variant/15">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-surface-container-highest flex items-center justify-center text-on-surface">
+                    <span className="material-symbols-outlined text-[18px]">
+                      account_balance
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-title-md text-title-md text-on-surface font-semibold">
+                      High-Yield Yields
+                    </span>
+                    <span className="font-body-sm text-body-sm text-on-surface-variant">
+                      MFS interest earned
+                    </span>
+                  </div>
+                </div>
+                <span className="font-title-lg text-title-lg text-on-surface font-bold">৳185.50</span>
+              </div>
+            </div>
+
+            {/* Bangla Contextual Advice Box */}
+            <div className="p-space-md rounded-xl bg-surface-container-high/60 flex flex-col gap-2 border border-outline-variant/20">
+              <div className="flex items-center gap-2 text-secondary">
+                <span className="material-symbols-outlined text-[20px]">lightbulb</span>
+                <span className="font-label-md text-label-md font-bold uppercase tracking-wider">
+                  সহজ পরামর্শ
+                </span>
+              </div>
+              <p className="font-body-md text-body-md text-on-surface font-medium leading-relaxed">
+                প্রতিদিন bKash থেকে মাত্র ৫০ বা ১০০ টাকা অটো-সেভ ভল্টে পাঠালে মাস শেষে ৩,০০০ টাকা পর্যন্ত স্বয়ংক্রিয়ভাবে সঞ্চয় হবে।
+              </p>
+            </div>
+
+            {/* Interactive Micro-Simulation Visual */}
+            <div className="pt-space-xs flex flex-col gap-2">
+              <span className="font-label-sm text-label-sm text-outline uppercase tracking-wider font-semibold">
+                30-Day Velocity Curve
+              </span>
+              <div className="h-28 w-full bg-surface-container-low rounded-lg p-2 flex items-end justify-between gap-1.5 border border-outline-variant/15">
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '35%' }}></div>
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '42%' }}></div>
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '40%' }}></div>
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '58%' }}></div>
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '52%' }}></div>
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '65%' }}></div>
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '60%' }}></div>
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '78%' }}></div>
+                <div className="w-full bg-surface-container-highest hover:bg-secondary transition-all rounded-t-sm" style={{ height: '72%' }}></div>
+                <div className="w-full bg-secondary transition-all rounded-t-sm" style={{ height: '94%' }}></div>
+              </div>
+              <div className="flex justify-between text-body-sm font-body-sm text-outline">
+                <span>Nov 1</span>
+                <span className="text-secondary font-semibold">Pace: +18.4%</span>
+                <span>Today</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Visual Travel Vault Inspiration */}
+          <div className="relative bg-surface-container-lowest rounded-xl overflow-hidden shadow-sm group border border-outline-variant/20">
+            <div
+              className="bg-cover bg-center w-full h-44 transition-transform duration-500 group-hover:scale-105"
+              style={{
+                backgroundImage:
+                  "url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80')",
+              }}
+            ></div>
+            <div className="absolute inset-0 bg-gradient-to-t from-primary/95 via-primary/40 to-transparent flex flex-col justify-end p-space-md text-on-primary">
+              <span className="font-label-sm text-label-sm text-secondary-container uppercase tracking-wider font-bold">
+                Dream Destination
+              </span>
+              <h4 className="font-title-lg text-title-lg font-bold">Sajek Cloud Camp 2025</h4>
+              <p className="font-body-sm text-body-sm text-primary-fixed-dim mt-0.5">
+                ৳12,500 needed to unlock advance bookings
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Adjust Pace Modal */}
+      {adjustModalGoal && (
+        <div className="fixed inset-0 bg-primary/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-surface-container-lowest rounded-2xl max-w-md w-full p-space-lg shadow-2xl border border-outline-variant/30 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-headline-md text-headline-md text-on-surface font-bold">
+                Adjust Savings Pace
+              </h3>
+              <button
+                onClick={() => setAdjustModalGoal(null)}
+                className="p-1 rounded-lg text-outline hover:text-on-surface"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            <p className="font-body-sm text-body-sm text-on-surface-variant">
+              Set your target monthly savings velocity for{' '}
+              <strong>{adjustModalGoal.title}</strong>. ArthoBachao AI will recalibrate your projected finish date automatically.
+            </p>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-outline uppercase tracking-wider">
+                Monthly Pace (৳ BDT)
+              </label>
+              <div className="relative flex items-center">
+                <span className="absolute left-3 font-bold text-secondary">৳</span>
+                <input
+                  type="number"
+                  value={newPaceInput}
+                  onChange={(e) => setNewPaceInput(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest font-headline-md text-on-surface font-bold focus:outline-none focus:ring-2 focus:ring-primary-container"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                onClick={() => setAdjustModalGoal(null)}
+                className="flex-1 py-2.5 rounded-xl bg-surface-container text-on-surface font-title-md hover:bg-surface-container-high transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSavePace}
+                className="flex-1 py-2.5 rounded-xl bg-primary-container text-on-primary font-title-md hover:opacity-95 transition-opacity"
+              >
+                Update Pace
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Goal Full Modal */}
+      {editingGoal && (
+        <div className="fixed inset-0 bg-primary/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-surface-container-lowest rounded-2xl max-w-lg w-full p-space-lg shadow-2xl border border-outline-variant/30 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-outline-variant/15">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{editingGoal.icon}</span>
+                <h3 className="font-headline-md text-headline-md text-on-surface font-bold">
+                  Edit Savings Goal
+                </h3>
+              </div>
+              <button
+                onClick={() => setEditingGoal(null)}
+                className="p-1 rounded-lg text-outline hover:text-on-surface"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditGoal} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-outline uppercase tracking-wider">
+                  Goal Title
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.title}
+                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container-lowest font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-outline uppercase tracking-wider">
+                    Target Capital (৳ BDT)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1000"
+                    value={editForm.targetAmount}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, targetAmount: parseInt(e.target.value, 10) || 0 })
+                    }
+                    className="w-full px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container-lowest font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-outline uppercase tracking-wider">
+                    Current Saved (৳ BDT)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    value={editForm.currentAmount}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, currentAmount: parseInt(e.target.value, 10) || 0 })
+                    }
+                    className="w-full px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container-lowest font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-outline uppercase tracking-wider">
+                    Monthly Pace (৳ BDT)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="500"
+                    value={editForm.monthlyPace}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, monthlyPace: parseInt(e.target.value, 10) || 0 })
+                    }
+                    className="w-full px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container-lowest font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-semibold text-outline uppercase tracking-wider">
+                    Target Date
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={editForm.deadline}
+                    onChange={(e) => setEditForm({ ...editForm, deadline: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container-lowest font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-outline uppercase tracking-wider">
+                  Target Account / Vault
+                </label>
+                <select
+                  value={editForm.accountVault}
+                  onChange={(e) => setEditForm({ ...editForm, accountVault: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-outline-variant/40 bg-surface-container-lowest font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary-container"
+                >
+                  <option value="bKash Liquid Vault">bKash Liquid Vault</option>
+                  <option value="Nagad micro-pockets">Nagad micro-pockets</option>
+                  <option value="City Bank High-Yield DPS">City Bank High-Yield DPS</option>
+                  <option value="Automated MFS sweep">Automated MFS sweep</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-2 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingGoal(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-surface-container text-on-surface font-title-md hover:bg-surface-container-high transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary font-title-md hover:opacity-95 transition-opacity"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
