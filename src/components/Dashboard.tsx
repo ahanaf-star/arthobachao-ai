@@ -55,7 +55,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     ? Math.min(100, (subGoal.currentAmount / subGoal.targetAmount) * 100)
     : 0;
 
-  const firstName = user?.name ? user.name.split(' ')[0] : 'Ahmed';
+  const firstName = user?.name?.trim() ? user.name.trim().split(' ')[0] : '';
 
   // Handle Apply Suggested Budget
   const handleApplyBudget = () => {
@@ -72,7 +72,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="flex flex-col">
           <div className="flex items-center gap-space-xs">
             <h1 className="font-headline-xl text-headline-xl text-on-surface tracking-tight font-bold">
-              {isBangla ? `শুভ সকাল, ${firstName}` : `Good morning, ${firstName} 👋`}
+              {isBangla
+                ? (firstName ? `শুভ সকাল, ${firstName}` : 'শুভ সকাল')
+                : (firstName ? `Good morning, ${firstName} 👋` : 'Good morning 👋')}
             </h1>
           </div>
           <p className="font-body-md text-body-md text-on-surface-variant mt-1 flex items-center gap-2">

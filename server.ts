@@ -136,10 +136,14 @@ async function startServer() {
   function generateDynamicDeterministicAnswer(
     userPrompt: string,
     inBangla: boolean,
-    ctx: any
+    ctx: any,
+    authUser?: any
   ): string {
     const norm = userPrompt.toLowerCase().trim();
-    const userName = ctx?.userName ? ctx.userName.split(' ')[0] : inBangla ? 'সম্মানিত গ্রাহক' : 'there';
+    const effectiveName = (authUser?.name || ctx?.userName)?.trim();
+    const firstName = effectiveName ? effectiveName.split(' ')[0] : null;
+    const greetingBn = firstName ? `আসসালামু আলাইকুম ${firstName}!` : 'আসসালামু আলাইকুম!';
+    const greetingEn = firstName ? `Assalamu Alaikum ${firstName}!` : 'Assalamu Alaikum!';
     const income = ctx?.monthlyIncome || 0;
     const spending = ctx?.monthlySpending || 0;
     const netSavings = ctx?.netSavings !== undefined ? ctx.netSavings : Math.max(0, income - spending);
@@ -245,13 +249,13 @@ async function startServer() {
 
     // General response
     if (inBangla) {
-      return `আসসালামু আলাইকুম ${userName}! আপনার আর্থিক তথ্য অনুযায়ী: চলতি মাসের আয় ৳${income.toLocaleString()}, ব্যয় ৳${spending.toLocaleString()}, সঞ্চয় ৳${netSavings.toLocaleString()} এবং উপলব্ধ ব্যালেন্স ৳${balance.toLocaleString()}। আপনার সবচেয়ে বড় খরচের খাত **${topCat.category}** (৳${topCat.amount.toLocaleString()})। আপনার বাজেট বা সঞ্চয় নিয়ে নির্দিষ্ট কোনো পরামর্শ চাইলে জানান!`;
+      return `${greetingBn} আপনার আর্থিক তথ্য অনুযায়ী: চলতি মাসের আয় ৳${income.toLocaleString()}, ব্যয় ৳${spending.toLocaleString()}, সঞ্চয় ৳${netSavings.toLocaleString()} এবং উপলব্ধ ব্যালেন্স ৳${balance.toLocaleString()}। আপনার সবচেয়ে বড় খরচের খাত **${topCat.category}** (৳${topCat.amount.toLocaleString()})। আপনার বাজেট বা সঞ্চয় নিয়ে নির্দিষ্ট কোনো পরামর্শ চাইলে জানান!`;
     }
-    return `Assalamu Alaikum ${userName}! Based on your authentic financial ledger: Monthly Income is ৳${income.toLocaleString()}, Spending is ৳${spending.toLocaleString()}, Net Savings is ৳${netSavings.toLocaleString()}, and Available Balance is ৳${balance.toLocaleString()}. Your largest expense category is **${topCat.category}** (৳${topCat.amount.toLocaleString()}). Please let me know how I can help with your budgeting or savings goals!`;
+    return `${greetingEn} Based on your authentic financial ledger: Monthly Income is ৳${income.toLocaleString()}, Spending is ৳${spending.toLocaleString()}, Net Savings is ৳${netSavings.toLocaleString()}, and Available Balance is ৳${balance.toLocaleString()}. Your largest expense category is **${topCat.category}** (৳${topCat.amount.toLocaleString()}). Please let me know how I can help with your budgeting or savings goals!`;
   }
 
   // AI Coach query endpoint
-  app.post('/api/ai/coach', async (req: Request, res: Response) => {
+  app.post('/api/ai/coach', optionalAuth, async (req: AuthenticatedRequest, res: Response) => {
     const { prompt, isBangla, financialContext } = req.body;
 
     if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
@@ -259,6 +263,10 @@ async function startServer() {
     }
 
     const ctx = financialContext || {};
+    const authUser = req.user;
+    const effectiveRawName = authUser?.name || ctx.userName;
+    const trimmedName = typeof effectiveRawName === 'string' ? effectiveRawName.trim() : '';
+    const firstName = trimmedName ? trimmedName.split(' ')[0] : null;
 
     if (ai) {
       try {
@@ -288,16 +296,22 @@ async function startServer() {
           ? `Saving Consistency: ${ctx.healthScore.factors.savingConsistency}%, Spending Control: ${ctx.healthScore.factors.spendingControl}%, Cash Flow Stability: ${ctx.healthScore.factors.cashFlowStability}%, Goal Progress: ${ctx.healthScore.factors.goalProgress}%`
           : 'Saving Consistency: 82%, Spending Control: 71%, Cash Flow Stability: 79%, Goal Progress: 84%';
 
-        const nameToUse = ctx.userName ? ctx.userName.split(' ')[0] : 'Ahmed';
-
         const systemInstruction = `You are ArthoBachao AI Personal Financial Coach, an expert digital wealth engine built specifically for Bangladesh (Dhaka lifestyle, bKash, Nagad, City Bank, Dhaka Metro MRT, Pathao, Shwapno). You provide explainable, empathetic, non-judgmental, and mathematically sound coaching grounded strictly in the user's authentic ledger data.
 
 CURRENCY CONVENTION: Always use Bangladeshi Taka (BDT / ৳), for example ৳5,000 or ৳29,200. Never use USD ($) or any other foreign currency.
 
 LANGUAGE: ${
           isBangla
-            ? `Respond in warm, natural, and fluent Bangla (বাংলায় উত্তর দিন). Address the user respectfully as "${nameToUse}" or "আপনি".`
-            : `Respond in English starting with a warm greeting: "Assalamu Alaikum ${nameToUse}!".`
+            ? `Respond in warm, natural, and fluent Bangla (বাংলায় উত্তর দিন). ${
+                firstName
+                  ? `Address the user respectfully as "${firstName}" or "আপনি". Start with a warm greeting: "আসসালামু আলাইকুম ${firstName}!".`
+                  : 'Address the user respectfully as "আপনি". Start with a warm neutral greeting: "আসসালামু আলাইকুম!". Do NOT use any name, "User", "Guest", or placeholder.'
+              }`
+            : `Respond in English. ${
+                firstName
+                  ? `Start with a warm greeting: "Assalamu Alaikum ${firstName}!".`
+                  : 'Start with a warm neutral greeting: "Assalamu Alaikum!". Do NOT use any name, "User", "Guest", or placeholder.'
+              }`
         }
 
 ==================================================
@@ -352,7 +366,7 @@ COACHING & FACTUAL RULES:
     }
 
     // Dynamic deterministic fallback using the user's actual financial context
-    const dynamicText = generateDynamicDeterministicAnswer(prompt, Boolean(isBangla), ctx);
+    const dynamicText = generateDynamicDeterministicAnswer(prompt, Boolean(isBangla), ctx, authUser);
     return res.json({
       source: 'deterministic_fallback',
       text: dynamicText,

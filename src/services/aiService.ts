@@ -128,11 +128,30 @@ export async function askFinancialCoach(
   let isGeminiSource = false;
 
   try {
+    const authHeaders: Record<string, string> = {};
+    if (typeof localStorage !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('finmate_auth_session');
+        if (raw) {
+          const session = JSON.parse(raw);
+          if (session?.token) {
+            authHeaders['Authorization'] = `Bearer ${session.token}`;
+          }
+        }
+      } catch {
+        // ignore parse error
+      }
+    }
+
     const endpoint =
       typeof window !== 'undefined' ? '/api/ai/coach' : 'http://localhost:3000/api/ai/coach';
+
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders,
+      },
       body: JSON.stringify({
         prompt: userQuery,
         isBangla,
@@ -253,6 +272,13 @@ export async function askFinancialCoach(
 
   // If Gemini was unavailable or returned empty, use the explainable deterministic engine
   if (!finalText) {
+    const trimmedName = userName?.trim();
+    const firstName = trimmedName ? trimmedName.split(' ')[0] : '';
+    const greetingEn = firstName ? `Assalamu Alaikum ${firstName}!` : 'Assalamu Alaikum!';
+    const greetingBn = firstName ? `আসসালামু আলাইকুম ${firstName}!` : 'আসসালামু আলাইকুম!';
+    const yesEn = firstName ? `Yes ${firstName}!` : 'Yes!';
+    const yesBn = firstName ? `হ্যাঁ ${firstName}!` : 'হ্যাঁ!';
+
     if (
       normalized.includes('short before month-end') ||
       normalized.includes('month-end') ||
@@ -278,8 +304,8 @@ export async function askFinancialCoach(
       normalized.includes('ইমার্জেন্সি ফান্ড')
     ) {
       finalText = isBangla
-        ? `হ্যাঁ আহমেদ! আপনি আপনার জরুরি ফান্ডের জন্য সঠিক ট্র্যাকে আছেন।\n\n• লক্ষ্য: ৳৩০,০০০\n• বর্তমান জমার পরিমাণ: ৳১৮,৫০০ (৬১.৭% অর্জিত)\n• বাকি ঘাটতি: ৳১১,৫০০\n• বর্তমান মাসিক গতি: ৳৩,২০০/মাস\n• ডিসেম্বর ২০২৪ এর মধ্যে শেষ করতে প্রয়োজনীয় গতি: ৳৫,০০০/মাস\n\nআপনি ঢাকায় আপনার সমবয়সী পেশাদারদের ৭৪% এর চেয়ে এগিয়ে আছেন। পরিকল্পিত ৳৫,০০০/মাস ধরে রাখলে ডিসেম্বর ২০২৪ এর মধ্যে সম্পূর্ণ লক্ষ্য অর্জিত হবে।`
-        : `Yes Ahmed! You are solidly on track for your Emergency Fund.\n\n• Target: ৳30,000\n• Current Balance: ৳18,500 (61.7% achieved)\n• Remaining Gap: ৳11,500\n• Current Average Pace: ৳3,200/month\n• Required Pace to hit Dec 2024 deadline: ৳5,000/month\n\nYou are outperforming 74% of peers in Dhaka. Continuing your ৳5,000/mo balanced plan projects full completion by December 2024.`;
+        ? `${yesBn} আপনি আপনার জরুরি ফান্ডের জন্য সঠিক ট্র্যাকে আছেন।\n\n• লক্ষ্য: ৳৩০,০০০\n• বর্তমান জমার পরিমাণ: ৳১৮,৫০০ (৬১.৭% অর্জিত)\n• বাকি ঘাটতি: ৳১১,৫০০\n• বর্তমান মাসিক গতি: ৳৩,২০০/মাস\n• ডিসেম্বর ২০২৪ এর মধ্যে শেষ করতে প্রয়োজনীয় গতি: ৳৫,০০০/মাস\n\nআপনি ঢাকায় আপনার সমবয়সী পেশাদারদের ৭৪% এর চেয়ে এগিয়ে আছেন। পরিকল্পিত ৳৫,০০০/মাস ধরে রাখলে ডিসেম্বর ২০২৪ এর মধ্যে সম্পূর্ণ লক্ষ্য অর্জিত হবে।`
+        : `${yesEn} You are solidly on track for your Emergency Fund.\n\n• Target: ৳30,000\n• Current Balance: ৳18,500 (61.7% achieved)\n• Remaining Gap: ৳11,500\n• Current Average Pace: ৳3,200/month\n• Required Pace to hit Dec 2024 deadline: ৳5,000/month\n\nYou are outperforming 74% of peers in Dhaka. Continuing your ৳5,000/mo balanced plan projects full completion by December 2024.`;
     } else if (
       normalized.includes('increasing') ||
       normalized.includes('spending the most') ||
@@ -305,8 +331,8 @@ export async function askFinancialCoach(
         : `Based on your scheduled inflows and obligations, your projected month-end balance will be approximately **৳7,450** (AI-assisted forecast).\n\n• Expected Inflows: ৳38,500 (Salary ৳32,500 + Freelance ৳6,000)\n• Expected Outflows: ~৳31,050 (including Day 26 rent of ৳16,000 & utilities of ৳1,200)\n• Safe Margin: Dips to ৳3,200 on Day 26, then closes safely at ৳7,450.\n• With simulated ৳300/day expense cuts, your month-end cushion rises to ৳11,250.\n*(Note: This is an indicative AI-assisted forecast, not a guaranteed outcome).*`;
     } else {
       finalText = isBangla
-        ? `আসসালামু আলাইকুম আহমেদ! আমি আপনার আর্থিক হিসাব বিশ্লেষণ করেছি (আয়: ৳৩৮,৫০০, ব্যয়: ৳২৯,২০০, সঞ্চয়: ৳৯,৩০০, বর্তমান মোট ব্যালেন্স: ৳২৪,৮৫০)। আপনার আর্থিক স্বাস্থ্য স্কোর ৭৯/১০০ (খুব ভালো)। আপনার বাজেট বা সঞ্চয় নিয়ে যেকোনো প্রশ্ন থাকলে আমাকে জানান!`
-        : `Assalamu Alaikum Ahmed! I have analyzed your live financial ledger (Income: ৳38,500, Spending: ৳29,200, Net Savings: ৳9,300, Available Liquid Balance: ৳24,850). Your financial health score is rated 79/100 (Very Good). Please let me know how I can help optimize your budget or accelerate your savings goals!`;
+        ? `${greetingBn} আমি আপনার আর্থিক হিসাব বিশ্লেষণ করেছি (আয়: ৳৩৮,৫০০, ব্যয়: ৳২৯,২০০, সঞ্চয়: ৳৯,৩০০, বর্তমান মোট ব্যালেন্স: ৳২৪,৮৫০)। আপনার আর্থিক স্বাস্থ্য স্কোর ৭৯/১০০ (খুব ভালো)। আপনার বাজেট বা সঞ্চয় নিয়ে যেকোনো প্রশ্ন থাকলে আমাকে জানান!`
+        : `${greetingEn} I have analyzed your live financial ledger (Income: ৳38,500, Spending: ৳29,200, Net Savings: ৳9,300, Available Liquid Balance: ৳24,850). Your financial health score is rated 79/100 (Very Good). Please let me know how I can help optimize your budget or accelerate your savings goals!`;
     }
   }
 

@@ -14,35 +14,34 @@ interface AICoachProps {
   onToggleBangla: (val: boolean) => void;
 }
 
-export const AICoach: React.FC<AICoachProps> = ({
-  transactions,
-  goals,
-  monthlyIncome = 38500,
-  userName,
-  initialQuery,
-  onNavigate,
-  isBanglaMode,
-  onToggleBangla,
-}) => {
-  const [inputText, setInputText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
-  const [voiceListening, setVoiceListening] = useState(false);
-  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+function formatGreeting(userName?: string, isBangla?: boolean): string {
+  const trimmed = userName?.trim();
+  const firstName = trimmed ? trimmed.split(' ')[0] : '';
+  if (isBangla) {
+    return firstName ? `আসসালামু আলাইকুম ${firstName}!` : 'আসসালামু আলাইকুম!';
+  }
+  return firstName ? `Assalamu Alaikum ${firstName}!` : 'Assalamu Alaikum!';
+}
 
-  // Initialize conversation stream
-  const [messages, setMessages] = useState<CoachMessage[]>([
+function buildInitialCoachMessages(userName?: string, isBangla?: boolean): CoachMessage[] {
+  const greeting = formatGreeting(userName, isBangla);
+  return [
     {
       id: 'msg-initial-user',
       sender: 'user',
-      text: 'I want to save ৳30,000 in six months. How realistic is that right now?',
+      text: isBangla
+        ? 'আমি ৬ মাসে ৳৩০,০০০ সঞ্চয় করতে চাই। এটি বর্তমানে কতটা বাস্তবসম্মত?'
+        : 'I want to save ৳30,000 in six months. How realistic is that right now?',
       timestamp: '11:42 AM',
     },
     {
       id: 'msg-initial-assistant',
       sender: 'assistant',
-      text: `Assalamu Alaikum Ahmed! Based on your recent 90-day cash flow, saving ৳30,000 in six months requires approximately ৳5,000 per month.\n\nCurrently, you are averaging ৳3,200/month in net savings. To close the ৳1,800/month gap, I analyzed your transaction patterns across City Bank, Nagad, and bKash. I discovered two zero-pain optimization opportunities:`,
+      text: `${greeting} ${
+        isBangla
+          ? 'আপনার সাম্প্রতিক ৯০ দিনের ক্যাশ-ফ্লো অনুযায়ী, ছয় মাসে ৳৩০,০০০ সঞ্চয় করতে প্রতি মাসে আনুমানিক ৳৫,০০০ প্রয়োজন।\n\nবর্তমানে আপনার মাসিক গড় নিট সঞ্চয় ৳৩,২০০। ৳১,৮০০ ঘাটতি পূরণে সিটি ব্যাংক, নগদ ও বিকাশ লেনদেন পর্যালোচনা করে দুটি কার্যকর সুযোগ শনাক্ত করা হয়েছে:'
+          : 'Based on your recent 90-day cash flow, saving ৳30,000 in six months requires approximately ৳5,000 per month.\n\nCurrently, you are averaging ৳3,200/month in net savings. To close the ৳1,800/month gap, I analyzed your transaction patterns across City Bank, Nagad, and bKash. I discovered two zero-pain optimization opportunities:'
+      }`,
       timestamp: '11:42 AM',
       isDeterministic: true,
       structuredData: {
@@ -81,7 +80,44 @@ export const AICoach: React.FC<AICoachProps> = ({
         },
       },
     },
-  ]);
+  ];
+}
+
+export const AICoach: React.FC<AICoachProps> = ({
+  transactions,
+  goals,
+  monthlyIncome = 38500,
+  userName,
+  initialQuery,
+  onNavigate,
+  isBanglaMode,
+  onToggleBangla,
+}) => {
+  const [inputText, setInputText] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [bookmarkedIds, setBookmarkedIds] = useState<Set<string>>(new Set());
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+
+  // Initialize conversation stream with authenticated user name
+  const [messages, setMessages] = useState<CoachMessage[]>(() =>
+    buildInitialCoachMessages(userName, isBanglaMode)
+  );
+
+  // Keep greeting personalized to authenticated user when in initial state
+  useEffect(() => {
+    setMessages((prev) => {
+      if (
+        prev.length === 2 &&
+        prev[0].id === 'msg-initial-user' &&
+        prev[1].id === 'msg-initial-assistant'
+      ) {
+        return buildInitialCoachMessages(userName, isBanglaMode);
+      }
+      return prev;
+    });
+  }, [userName, isBanglaMode]);
 
   const streamEndRef = useRef<HTMLDivElement>(null);
 
