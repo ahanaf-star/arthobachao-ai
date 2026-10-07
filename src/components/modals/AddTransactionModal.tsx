@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction, CategoryName, TransactionType } from '../../types/financial';
+import { getLocalDateString } from '../../services/financialCalculations';
 
 interface AddTransactionModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState<CategoryName>('Food & Groceries');
   const [account, setAccount] = useState<'bKash' | 'City Bank' | 'Nagad'>('bKash');
+  const [date, setDate] = useState<string>(() => getLocalDateString());
 
   if (!isOpen) return null;
 
@@ -28,7 +30,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
     const newTx: Transaction = {
       id: `tx-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
+      date: date || getLocalDateString(),
       type,
       category,
       amount: parsedAmount,
@@ -47,6 +49,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
     };
 
     onAddTransaction(newTx);
+    setAmount('');
+    setMerchant('');
+    setDescription('');
+    setDate(getLocalDateString());
     onClose();
   };
 
@@ -112,6 +118,20 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 className="w-full pl-8 pr-3 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest font-headline-md text-on-surface font-bold focus:outline-none focus:ring-2 focus:ring-primary-container"
               />
             </div>
+          </div>
+
+          {/* Transaction Date */}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-outline uppercase tracking-wider">
+              Transaction Date
+            </label>
+            <input
+              type="date"
+              required
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-lowest text-on-surface font-body-md focus:outline-none focus:ring-2 focus:ring-primary-container"
+            />
           </div>
 
           {/* Merchant */}

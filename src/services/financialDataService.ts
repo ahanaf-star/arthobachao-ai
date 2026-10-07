@@ -106,10 +106,7 @@ export const financialDataService = {
         return INITIAL_TRANSACTIONS;
       }
 
-      // If new registered user, provide isolated starter transactions
-      const starter = createStarterTransactions();
-      localStorage.setItem(key, JSON.stringify(starter));
-      return starter;
+      return [];
     } catch (err) {
       console.error(`Failed reading transactions for user ${userId}:`, err);
       return userId === 'usr-ahmed-01' ? INITIAL_TRANSACTIONS : [];
@@ -145,10 +142,7 @@ export const financialDataService = {
         return INITIAL_SAVINGS_GOALS;
       }
 
-      // If new user, provide starter goals
-      const starter = createStarterGoals();
-      localStorage.setItem(key, JSON.stringify(starter));
-      return starter;
+      return [];
     } catch (err) {
       console.error(`Failed reading goals for user ${userId}:`, err);
       return userId === 'usr-ahmed-01' ? INITIAL_SAVINGS_GOALS : [];
@@ -188,7 +182,7 @@ export const financialDataService = {
     if (!userId) return null;
     try {
       const remote = await apiService.getTransactions(userId);
-      if (remote && Array.isArray(remote) && remote.length > 0) {
+      if (remote && Array.isArray(remote)) {
         this.saveTransactions(userId, remote);
         return remote;
       }
@@ -205,7 +199,7 @@ export const financialDataService = {
     if (!userId) return null;
     try {
       const remote = await apiService.getGoals(userId);
-      if (remote && Array.isArray(remote) && remote.length > 0) {
+      if (remote && Array.isArray(remote)) {
         this.saveGoals(userId, remote);
         return remote;
       }

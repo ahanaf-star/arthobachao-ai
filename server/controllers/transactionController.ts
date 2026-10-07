@@ -24,6 +24,8 @@ export async function getTransactions(req: Request, res: Response) {
     if (!isOwner) {
       return res.status(403).json({ error: "Access forbidden: You cannot access another user's transactions" });
     }
+  } else if (userId !== 'usr-ahmed-01') {
+    return res.status(401).json({ error: 'Authentication required to view transactions' });
   }
 
   if (!isDbConnected()) {
@@ -73,7 +75,27 @@ export async function getTransactions(req: Request, res: Response) {
  * Create a new transaction for a user
  */
 export async function createTransaction(req: Request, res: Response) {
-  const { userId } = req.params;
+  const authUser = (req as any).user;
+  const authUserId = (req as any).userId || authUser?.customId || authUser?._id?.toString() || authUser?.id;
+  const urlUserId = req.params.userId;
+  const targetUserId = authUserId || urlUserId;
+
+  if (!targetUserId || typeof targetUserId !== 'string') {
+    return res.status(400).json({ error: 'Valid user ID is required' });
+  }
+
+  if (authUser && urlUserId) {
+    const isOwner =
+      authUser.customId === urlUserId ||
+      authUser.id === urlUserId ||
+      authUser._id?.toString() === urlUserId;
+    if (!isOwner) {
+      return res.status(403).json({ error: "Access forbidden: You cannot record transactions for another user" });
+    }
+  } else if (!authUser && targetUserId !== 'usr-ahmed-01') {
+    return res.status(401).json({ error: 'Authentication required to create transactions' });
+  }
+
   const {
     id,
     type,
@@ -89,21 +111,6 @@ export async function createTransaction(req: Request, res: Response) {
     location,
     isRecurring,
   } = req.body;
-
-  if (!userId || typeof userId !== 'string') {
-    return res.status(400).json({ error: 'Valid user ID is required' });
-  }
-
-  const authUser = (req as any).user;
-  if (authUser) {
-    const isOwner =
-      authUser.customId === userId ||
-      authUser.id === userId ||
-      authUser._id?.toString() === userId;
-    if (!isOwner) {
-      return res.status(403).json({ error: "Access forbidden: You cannot record transactions for another user" });
-    }
-  }
 
   // Validate amount
   const parsedAmount = typeof amount === 'number' ? amount : parseFloat(amount);
@@ -136,7 +143,7 @@ export async function createTransaction(req: Request, res: Response) {
     // If DB is offline, return mock created transaction with ID
     const fallbackTx = {
       id: id || `tx-${Date.now()}`,
-      userId,
+      userId: targetUserId,
       type,
       amount: parsedAmount,
       category: category.trim(),
@@ -157,7 +164,7 @@ export async function createTransaction(req: Request, res: Response) {
   try {
     const newTx = await TransactionModel.create({
       customId: id || `tx-${Date.now()}`,
-      userId,
+      userId: targetUserId,
       type,
       amount: parsedAmount,
       category: category.trim(),
@@ -196,7 +203,51 @@ export async function updateTransaction(req: Request, res: Response) {
   }
 
   delete updates._id;
+  delete updates.userId;
   delete updates.createdAt;
+  delete updates.customId;
+
+  // Validate editable fields if present
+  if (updates.amount !== undefined) {
+    const parsedAmount = typeof updates.amount === 'number' ? updates.amount : parseFloat(updates.amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number greater than zero' });
+    }
+    updates.amount = parsedAmount;
+  }
+
+  if (updates.type !== undefined && !['expense', 'income', 'transfer'].includes(updates.type)) {
+    return res.status(400).json({ error: 'Transaction type must be expense, income, or transfer' });
+  }
+
+  if (updates.category !== undefined) {
+    if (typeof updates.category !== 'string' || !updates.category.trim()) {
+      return res.status(400).json({ error: 'Category cannot be empty' });
+    }
+    updates.category = updates.category.trim();
+  }
+
+  if (updates.description !== undefined) {
+    if (typeof updates.description !== 'string' || !updates.description.trim()) {
+      return res.status(400).json({ error: 'Description cannot be empty' });
+    }
+    updates.description = updates.description.trim();
+  }
+
+  if (updates.date !== undefined) {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(updates.date)) {
+      return res.status(400).json({ error: 'Date must be in YYYY-MM-DD format' });
+    }
+  }
+
+  if (updates.classification !== undefined) {
+    if (!['essential', 'discretionary', 'anomalies'].includes(updates.classification)) {
+      return res.status(400).json({ error: 'Classification must be essential, discretionary, or anomalies' });
+    }
+  }
+
+  const authUser = (req as any).user;
 
   if (!isDbConnected()) {
     return res.json({
@@ -220,7 +271,17 @@ export async function updateTransaction(req: Request, res: Response) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    const authUser = (req as any).user;
+    const urlUserId = req.params.userId;
+    if (urlUserId && authUser) {
+      const isOwnerOfUrl =
+        authUser.customId === urlUserId ||
+        authUser.id === urlUserId ||
+        authUser._id?.toString() === urlUserId;
+      if (!isOwnerOfUrl) {
+        return res.status(403).json({ error: "Access forbidden: You cannot modify another user's transaction" });
+      }
+    }
+
     if (authUser) {
       const isOwner =
         authUser.customId === existingTx.userId ||
@@ -229,6 +290,8 @@ export async function updateTransaction(req: Request, res: Response) {
       if (!isOwner) {
         return res.status(403).json({ error: "Access forbidden: You cannot modify another user's transaction" });
       }
+    } else if (existingTx.userId !== 'usr-ahmed-01') {
+      return res.status(401).json({ error: 'Authentication required to update this transaction' });
     }
 
     Object.assign(existingTx, updates);
@@ -252,6 +315,8 @@ export async function deleteTransaction(req: Request, res: Response) {
     return res.status(400).json({ error: 'Valid transaction ID is required' });
   }
 
+  const authUser = (req as any).user;
+
   if (!isDbConnected()) {
     return res.json({ message: 'Transaction removed successfully (in-memory mode)', id: txId });
   }
@@ -270,7 +335,17 @@ export async function deleteTransaction(req: Request, res: Response) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
 
-    const authUser = (req as any).user;
+    const urlUserId = req.params.userId;
+    if (urlUserId && authUser) {
+      const isOwnerOfUrl =
+        authUser.customId === urlUserId ||
+        authUser.id === urlUserId ||
+        authUser._id?.toString() === urlUserId;
+      if (!isOwnerOfUrl) {
+        return res.status(403).json({ error: "Access forbidden: You cannot delete another user's transaction" });
+      }
+    }
+
     if (authUser) {
       const isOwner =
         authUser.customId === existingTx.userId ||
@@ -279,6 +354,8 @@ export async function deleteTransaction(req: Request, res: Response) {
       if (!isOwner) {
         return res.status(403).json({ error: "Access forbidden: You cannot delete another user's transaction" });
       }
+    } else if (existingTx.userId !== 'usr-ahmed-01') {
+      return res.status(401).json({ error: 'Authentication required to delete this transaction' });
     }
 
     await existingTx.deleteOne();

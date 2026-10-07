@@ -7,6 +7,11 @@ import authRoutes from './server/routes/authRoutes';
 import userRoutes from './server/routes/userRoutes';
 import transactionRoutes from './server/routes/transactionRoutes';
 import goalRoutes from './server/routes/goalRoutes';
+import { requireAuth, optionalAuth, AuthenticatedRequest } from './server/middleware/authMiddleware';
+import {
+  getAuthoritativeUserHealthScore,
+  getOrGenerateHealthExplanation,
+} from './server/services/healthScoreService';
 
 dotenv.config();
 
@@ -25,6 +30,44 @@ async function startServer() {
   app.use('/api/users', transactionRoutes);
   app.use('/api', transactionRoutes);
   app.use('/api', goalRoutes);
+  
+  // Authenticated Financial Health Score & Explanation endpoint
+  app.post('/api/ai/health/explain', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const isBangla = req.body.language === 'bn' || Boolean(req.body.isBangla);
+      const language: 'en' | 'bn' = isBangla ? 'bn' : 'en';
+
+      // 1. Authoritative score calculated directly from MongoDB
+      const healthResult = await getAuthoritativeUserHealthScore(userId);
+
+      // 2. Generate or fetch cached explanation
+      const explanation = await getOrGenerateHealthExplanation(healthResult, language, ai);
+
+      return res.json({
+        health: healthResult,
+        explanation,
+      });
+    } catch (error: any) {
+      console.error('Error generating health explanation:', error);
+      return res.status(500).json({ error: 'Failed to generate health explanation' });
+    }
+  });
+
+  // Authoritative Financial Health Score endpoint (Read-only calculation from MongoDB)
+  app.get('/api/users/:userId/financial-health', optionalAuth, async (req: Request, res: Response) => {
+    try {
+      const targetUserId = req.params.userId || (req as any).userId;
+      if (!targetUserId) {
+        return res.status(400).json({ error: 'User ID is required' });
+      }
+      const healthResult = await getAuthoritativeUserHealthScore(targetUserId);
+      return res.json(healthResult);
+    } catch (error: any) {
+      console.error('Error calculating health score:', error);
+      return res.status(500).json({ error: 'Failed to calculate health score' });
+    }
+  });
 
   // Initialize Gemini client if API key is present
   const apiKey = process.env.GEMINI_API_KEY;

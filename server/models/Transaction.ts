@@ -16,6 +16,7 @@ export interface ITransaction extends Document {
   location?: string;
   isRecurring?: boolean;
   createdAt: Date;
+  updatedAt?: Date;
 }
 
 const TransactionSchema = new Schema<ITransaction>(
@@ -91,7 +92,7 @@ const TransactionSchema = new Schema<ITransaction>(
     },
   },
   {
-    timestamps: { createdAt: true, updatedAt: false },
+    timestamps: true,
     toJSON: {
       virtuals: true,
       transform: (_doc, ret: any) => {

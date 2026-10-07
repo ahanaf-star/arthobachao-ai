@@ -222,6 +222,15 @@ export interface CoachMessage {
   timestamp: string;
   isBangla?: boolean;
   isDeterministic?: boolean;
+  source?: 'ai' | 'fallback';
+  factsUsed?: string[];
+  followUps?: string[];
+  dataGaps?: string[];
+  dataWindow?: {
+    currentMonth: string;
+    today: string;
+    hasData: boolean;
+  };
   structuredData?: {
     targetVelocity?: {
       current: number;

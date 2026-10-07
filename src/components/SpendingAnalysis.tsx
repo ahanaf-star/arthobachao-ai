@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Transaction, TransactionClassification } from '../types/financial';
 import {
   calculateMonthlyOverview,
@@ -13,6 +13,7 @@ interface SpendingAnalysisProps {
   onOpenAddTransaction: () => void;
   isBangla: boolean;
   onCoachQuery?: (query: string) => void;
+  onSelectTransactionForEdit?: (transaction: Transaction) => void;
 }
 
 export const SpendingAnalysis: React.FC<SpendingAnalysisProps> = ({
@@ -21,6 +22,7 @@ export const SpendingAnalysis: React.FC<SpendingAnalysisProps> = ({
   onOpenAddTransaction: _onOpenAddTransaction,
   isBangla,
   onCoachQuery,
+  onSelectTransactionForEdit,
 }) => {
   const [selectedMonth, setSelectedMonth] = useState<string>(() =>
     getLatestTransactionMonth(transactions)
@@ -45,11 +47,15 @@ export const SpendingAnalysis: React.FC<SpendingAnalysisProps> = ({
     const now = new Date();
     const curr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     set.add(curr);
-    set.add('2024-10');
-    set.add('2024-09');
-    set.add('2024-08');
     return Array.from(set).sort().reverse();
   }, [transactions]);
+
+  // Keep selectedMonth synchronized when transactions change
+  useEffect(() => {
+    if (availableMonths.length > 0 && !availableMonths.includes(selectedMonth)) {
+      setSelectedMonth(availableMonths[0]);
+    }
+  }, [availableMonths, selectedMonth]);
 
   const getMonthLabel = (m: string) => {
     try {
@@ -724,12 +730,11 @@ export const SpendingAnalysis: React.FC<SpendingAnalysisProps> = ({
                     </span>
                   </div>
                   <button
-                    onClick={() => {
-                      // Show transaction details
-                    }}
+                    onClick={() => onSelectTransactionForEdit?.(tx)}
                     className="p-2 rounded-lg text-outline hover:text-on-surface hover:bg-surface-container transition-colors"
+                    title={isBangla ? 'সম্পাদনা বা ডিলিট করুন' : 'Edit or delete transaction'}
                   >
-                    <span className="material-symbols-outlined text-[20px]">more_vert</span>
+                    <span className="material-symbols-outlined text-[20px]">edit</span>
                   </button>
                 </div>
               </div>

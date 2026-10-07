@@ -12,6 +12,7 @@ import { SettingsProfileView } from './components/SettingsProfileView';
 import { LandingPage } from './components/LandingPage';
 import { AuthScreen } from './components/AuthScreen';
 import { AddTransactionModal } from './components/modals/AddTransactionModal';
+import { EditTransactionModal } from './components/modals/EditTransactionModal';
 import { CreateGoalModal } from './components/modals/CreateGoalModal';
 import { TransferModal } from './components/modals/TransferModal';
 import { MonthlyReportModal } from './components/modals/MonthlyReportModal';
@@ -50,6 +51,7 @@ export default function App() {
 
   // Modal States
   const [isAddTxOpen, setIsAddTxOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isCreateGoalOpen, setIsCreateGoalOpen] = useState(false);
   const [isTransferOpen, setIsTransferOpen] = useState(false);
   const [isMonthlyReportOpen, setIsMonthlyReportOpen] = useState(false);
@@ -150,7 +152,76 @@ export default function App() {
         await refreshFinancialData(currentUser.id);
       } catch (err) {
         console.error('Failed to persist transaction to backend:', err);
+        await refreshFinancialData(currentUser.id);
       }
+    }
+  };
+
+  // Update Transaction Handler - persists to MongoDB, adjusts account balance delta, revalidates
+  const handleUpdateTransaction = async (updatedTx: Transaction) => {
+    if (!currentUser) return;
+    const oldTx = transactions.find((t) => t.id === updatedTx.id);
+
+    // Optimistically update transactions
+    setTransactions((prev) => prev.map((t) => (t.id === updatedTx.id ? updatedTx : t)));
+
+    // Adjust user account balance based on delta
+    if (oldTx) {
+      const updatedAccounts = currentUser.linkedAccounts.map((acc) => {
+        let bal = acc.balance;
+        // Reverse old transaction impact
+        if (acc.name === oldTx.account) {
+          bal = oldTx.type === 'income' ? bal - oldTx.amount : bal + oldTx.amount;
+        }
+        // Apply new transaction impact
+        if (acc.name === updatedTx.account) {
+          bal = updatedTx.type === 'income' ? bal + updatedTx.amount : bal - updatedTx.amount;
+        }
+        return { ...acc, balance: Math.max(0, bal) };
+      });
+      const updatedUser = { ...currentUser, linkedAccounts: updatedAccounts };
+      handleUpdateUser(updatedUser);
+    }
+
+    try {
+      await apiService.updateTransaction(currentUser.id, updatedTx.id, updatedTx);
+      await refreshFinancialData(currentUser.id);
+    } catch (err) {
+      console.error('Failed to persist transaction update to backend:', err);
+      await refreshFinancialData(currentUser.id);
+      throw err;
+    }
+  };
+
+  // Delete Transaction Handler - persists to MongoDB, restores account balance, revalidates
+  const handleDeleteTransaction = async (txId: string) => {
+    if (!currentUser) return;
+    const oldTx = transactions.find((t) => t.id === txId);
+
+    // Optimistically remove
+    setTransactions((prev) => prev.filter((t) => t.id !== txId));
+
+    // Restore user account balance
+    if (oldTx) {
+      const updatedAccounts = currentUser.linkedAccounts.map((acc) => {
+        if (acc.name === oldTx.account) {
+          const restoredBal =
+            oldTx.type === 'income' ? acc.balance - oldTx.amount : acc.balance + oldTx.amount;
+          return { ...acc, balance: Math.max(0, restoredBal) };
+        }
+        return acc;
+      });
+      const updatedUser = { ...currentUser, linkedAccounts: updatedAccounts };
+      handleUpdateUser(updatedUser);
+    }
+
+    try {
+      await apiService.deleteTransaction(currentUser.id, txId);
+      await refreshFinancialData(currentUser.id);
+    } catch (err) {
+      console.error('Failed to delete transaction from backend:', err);
+      await refreshFinancialData(currentUser.id);
+      throw err;
     }
   };
 
@@ -397,6 +468,7 @@ export default function App() {
                 setCoachPreQuery(query);
                 setActiveScreen('ai-coach');
               }}
+              onSelectTransactionForEdit={(tx) => setEditingTransaction(tx)}
             />
           )}
 
@@ -461,6 +533,14 @@ export default function App() {
         isOpen={isAddTxOpen}
         onClose={() => setIsAddTxOpen(false)}
         onAddTransaction={handleAddTransaction}
+      />
+      <EditTransactionModal
+        isOpen={!!editingTransaction}
+        onClose={() => setEditingTransaction(null)}
+        transaction={editingTransaction}
+        onUpdateTransaction={handleUpdateTransaction}
+        onDeleteTransaction={handleDeleteTransaction}
+        isBangla={isBangla}
       />
       <CreateGoalModal
         isOpen={isCreateGoalOpen}

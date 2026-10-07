@@ -78,36 +78,6 @@ export function getPreviousMonth(monthStr: string): string {
   return `${prevYearNum}-${String(prevMonthNum).padStart(2, '0')}`;
 }
 
-export function formatMonthName(monthStr: string, isBangla: boolean = false): string {
-  if (!monthStr || !monthStr.includes('-')) return monthStr;
-  const [year, m] = monthStr.split('-');
-  const mIndex = parseInt(m, 10) - 1;
-  const monthsEn = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  const monthsBn = [
-    'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
-    'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'
-  ];
-  const mName = isBangla ? (monthsBn[mIndex] || monthStr) : (monthsEn[mIndex] || monthStr);
-  return `${mName} ${year}`;
-}
-
-export function getAvailableMonths(transactions: Transaction[]): string[] {
-  const set = new Set<string>();
-  const currentMonth = getLocalDateString().slice(0, 7);
-  set.add(currentMonth);
-  if (transactions && Array.isArray(transactions)) {
-    transactions.forEach((t) => {
-      if (t.date && /^\d{4}-\d{2}/.test(t.date)) {
-        set.add(t.date.slice(0, 7));
-      }
-    });
-  }
-  return Array.from(set).sort().reverse();
-}
-
 export function getLatestTransactionMonth(transactions: Transaction[]): string {
   if (!transactions || transactions.length === 0) {
     return getLocalDateString().slice(0, 7);
@@ -120,6 +90,57 @@ export function getLatestTransactionMonth(transactions: Transaction[]): string {
   }
   months.sort().reverse();
   return months[0];
+}
+
+export function getAvailableMonths(transactions: Transaction[]): string[] {
+  if (!transactions || transactions.length === 0) {
+    return [getLocalDateString().slice(0, 7)];
+  }
+  const months = Array.from(
+    new Set(
+      transactions
+        .map((t) => (t.date ? t.date.slice(0, 7) : ''))
+        .filter((m) => /^\d{4}-\d{2}$/.test(m))
+    )
+  );
+  months.sort().reverse();
+  return months.length > 0 ? months : [getLocalDateString().slice(0, 7)];
+}
+
+export function formatMonthName(monthStr: string, isBangla: boolean = false): string {
+  if (!monthStr) return '';
+  const [yearStr, mStr] = monthStr.split('-');
+  const mIdx = (parseInt(mStr, 10) || 1) - 1;
+  const monthsEn = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  const monthsBn = [
+    'জানুয়ারি',
+    'ফেব্রুয়ারি',
+    'মার্চ',
+    'এপ্রিল',
+    'মে',
+    'জুন',
+    'জুলাই',
+    'আগস্ট',
+    'সেপ্টেম্বর',
+    'অক্টোবর',
+    'নভেম্বর',
+    'ডিসেম্বর',
+  ];
+  const mName = isBangla ? monthsBn[mIdx] : monthsEn[mIdx];
+  return `${mName} ${yearStr}`;
 }
 
 // Filter transactions by month (e.g. '2024-10')
@@ -311,9 +332,9 @@ export function calculateFinancialHealthScore(
   // Composite calculation
   const compositeScore = Math.round(
     savingConsistency * 0.3 +
-      spendingControl * 0.25 +
-      cashFlowStability * 0.25 +
-      goalProgress * 0.2
+    spendingControl * 0.25 +
+    cashFlowStability * 0.25 +
+    goalProgress * 0.2
   );
 
   let status: FinancialHealthMetrics['status'] = 'Very Good';

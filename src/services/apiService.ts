@@ -140,53 +140,48 @@ export const apiService = {
   /**
    * POST /api/users/:userId/transactions
    */
-  async createTransaction(userId: string, tx: Transaction): Promise<Transaction | null> {
-    try {
-      const res = await fetch(`${BASE_URL}/api/users/${encodeURIComponent(userId)}/transactions`, {
-        method: 'POST',
-        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(tx),
-      });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      console.warn(`[apiService] createTransaction(${userId}) failed, recorded locally:`, err);
-      return null;
+  async createTransaction(userId: string, tx: Transaction): Promise<Transaction> {
+    const res = await fetch(`${BASE_URL}/api/users/${encodeURIComponent(userId)}/transactions`, {
+      method: 'POST',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(tx),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Failed to create transaction (${res.status})`);
     }
+    return await res.json();
   },
 
   /**
    * PUT /api/users/:userId/transactions/:txId
    */
-  async updateTransaction(userId: string, txId: string, updates: Partial<Transaction>): Promise<Transaction | null> {
-    try {
-      const res = await fetch(`${BASE_URL}/api/users/${encodeURIComponent(userId)}/transactions/${encodeURIComponent(txId)}`, {
-        method: 'PUT',
-        headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify(updates),
-      });
-      if (!res.ok) return null;
-      return await res.json();
-    } catch (err) {
-      console.warn(`[apiService] updateTransaction(${txId}) failed:`, err);
-      return null;
+  async updateTransaction(userId: string, txId: string, updates: Partial<Transaction>): Promise<Transaction> {
+    const res = await fetch(`${BASE_URL}/api/users/${encodeURIComponent(userId)}/transactions/${encodeURIComponent(txId)}`, {
+      method: 'PUT',
+      headers: getAuthHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(updates),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Failed to update transaction (${res.status})`);
     }
+    return await res.json();
   },
 
   /**
    * DELETE /api/users/:userId/transactions/:txId
    */
   async deleteTransaction(userId: string, txId: string): Promise<boolean> {
-    try {
-      const res = await fetch(`${BASE_URL}/api/users/${encodeURIComponent(userId)}/transactions/${encodeURIComponent(txId)}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      return res.ok;
-    } catch (err) {
-      console.warn(`[apiService] deleteTransaction(${txId}) failed:`, err);
-      return false;
+    const res = await fetch(`${BASE_URL}/api/users/${encodeURIComponent(userId)}/transactions/${encodeURIComponent(txId)}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Failed to delete transaction (${res.status})`);
     }
+    return true;
   },
 
   /**
